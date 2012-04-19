@@ -36,6 +36,12 @@ module Slanger
       Slanger::Redis.subscribe channel_id
     end
 
+    # Send an event received from Redis to the EventMachine channel
+    # which will send it to subscribed clients.
+    def dispatch(message, channel)
+      push(message.to_json) unless channel =~ /^slanger:/
+    end
+
     def channel
       @channel ||= EM::Channel.new
     end
@@ -47,11 +53,6 @@ module Slanger
       push message.to_json if authenticated?
     end
 
-    # Send an event received from Redis to the EventMachine channel
-    # which will send it to subscribed clients.
-    def dispatch(message, channel)
-      push(message.to_json) unless channel =~ /^slanger:/
-    end
 
     def authenticated?
       channel_id =~ /^private-/ || channel_id =~ /^presence-/
