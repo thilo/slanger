@@ -80,7 +80,7 @@ module Slanger
 
     # Send event about the new subscription to the Redis slanger:connection_notification Channel.
     def connect channel_data, channel_id, id
-      publish_connection_notification(subscription_id: id,
+      publish_connection(subscription_id: id,
         online: true,
         channel_data: channel_data,
         channel: channel_id)
@@ -88,17 +88,15 @@ module Slanger
 
     def disconnect channel_id, id
       # Notify all instances
-      publish_connection_notification subscription_id: id,
-                                      online: false,
-                                      channel: channel_id
+      publish_connection subscription_id: id,
+        online: false,
+        channel: channel_id
 
     end
 
-    def publish_connection_notification(payload, retry_count=0)
-      # Send a subscription notification to the global slanger:connection_notification
-      # channel.
+    def publish_connection(payload, retry_count=0)
       Slanger::Redis.publish('slanger:connection_notification', payload.to_json).
-        tap { |r| r.errback { publish_connection_notification payload, retry_count.succ unless retry_count == 5 } }
+        tap { |r| r.errback { publish_connection payload, retry_count.succ unless retry_count == 5 } }
     end
 
     def_delegators :roster, :subscriptions, :subscribers, :update_subscribers
@@ -109,7 +107,5 @@ module Slanger
     def internal_subscription_table
       @internal_subscription_table ||= {}
     end
-
-
   end
 end

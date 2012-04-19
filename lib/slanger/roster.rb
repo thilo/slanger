@@ -33,9 +33,9 @@ class Roster
     end
   end
 
-    def payload(event_name, payload = {})
-      { channel: channel_id, event: event_name, data: payload }.to_json
-    end
+  def payload(event_name, payload = {})
+    { channel: channel_id, event: event_name, data: payload }.to_json
+  end
 
   def get
     Fiber.new do
