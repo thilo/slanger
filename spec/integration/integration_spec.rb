@@ -98,12 +98,12 @@ describe 'Integration' do
     end
   end
 
-  def messages_for condition, if_true, if_false
+  def messages_for condition, if_true
     em_stream do |websocket, messages|
-      if condition
+      if condition.call(websocket,messages)
         if_true.call(websocket, messages)
       else
-        if_false.call(websocket, messages)
+        EM.stop
       end
     end
   end
@@ -112,9 +112,8 @@ describe 'Integration' do
     context 'with valid authentication credentials:' do
       it 'accepts the subscription request' do
         messages = messages_for(
-          ->(m, ws) { m.length < 2},
-          ->(m, ws) { private_channel ws, m.first},
-          ->(m, ws) { EM.stop})
+          ->(ws, m) { m.length < 2},
+          ->(ws, m) { private_channel ws, m.first})
 
         messages.should have_attributes connection_established: true,
                                         count: 2,
