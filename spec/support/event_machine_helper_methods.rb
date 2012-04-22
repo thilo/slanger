@@ -3,6 +3,7 @@ module EventMachineHelperMethods
   # we want to wait for i/o to finish.
   def fork_slanger config = {}
     config = default_config.merge config
+    debugger
     @server_pid = EM.fork_reactor do
       require_relative '../../slanger.rb'
       Thin::Logging.silent = true
@@ -45,7 +46,7 @@ module EventMachineHelperMethods
       end
     end
 
-    return messages
+    messages
   end
 
   def em_thread
@@ -76,8 +77,8 @@ module EventMachineHelperMethods
   end
 
   def auth_from options
-    id = options[:message]['data']['socket_id']
-    name = options[:name]
+    id      = options[:message]['data']['socket_id']
+    name    = options[:name]
     user_id = options[:user_id]
     Pusher['presence-channel'].authenticate(id, {user_id: user_id, user_info: {name: name}})
   end

@@ -29,11 +29,17 @@ module Slanger
       def send_client_message msg
         from(msg['channel']).try :send_client_message, msg
       end
+
+      def dispatch channel_id, message
+        message = JSON.parse message
+        c       = from message['channel']
+        c.dispatch message, channel_id
+      end
     end
 
     def initialize(attrs)
       super
-      Slanger::Redis.subscribe channel_id
+      Slanger.subscribe channel_id
     end
 
     # Send an event received from Redis to the EventMachine channel

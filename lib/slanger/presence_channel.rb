@@ -15,7 +15,7 @@ module Slanger
     def initialize(attrs)
       super
       # Also subscribe the slanger daemon to a Redis channel used for events concerning subscriptions.
-      Slanger::Redis.subscribe 'slanger:connection_notification'
+      Slanger.subscribe 'slanger:connection_notification'
     end
 
     # Send an event received from Redis to the EventMachine channel
@@ -54,7 +54,7 @@ module Slanger
       publisher = connect channel_data, channel_id, id
 
       return [publisher, id, channel_data]
-   end
+    end
 
     def ids
       subscriptions.map { |_,v| v['user_id'] }
@@ -95,7 +95,7 @@ module Slanger
     end
 
     def publish_connection(payload, retry_count=0)
-      Slanger::Redis.publish('slanger:connection_notification', payload.to_json).
+      Slanger.publish('slanger:connection_notification', payload.to_json).
         tap { |r| r.errback { publish_connection payload, retry_count.succ unless retry_count == 5 } }
     end
 

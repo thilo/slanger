@@ -8,6 +8,10 @@ module Slanger
       Thin::Logging.silent = true
       Rack::Handler::Thin.run Slanger::ApiServer, Host: Slanger::Config.api_host, Port: Slanger::Config.api_port
       Slanger::WebSocketServer.run
+    rescue RuntimeError => e
+      Slanger::Service.stop
+
+      fail 'Cannot connect to Slanger, perhaps you have another instance running?'
     end
 
     def stop

@@ -6,7 +6,9 @@ require 'em-hiredis'
 require 'rack'
 require 'active_support/core_ext/string'
 
-module Slanger; end
+module Slanger
+  delegate :subscribe, :publish, to: :redis
+end
 
 EM.run do
   File.tap do |f|

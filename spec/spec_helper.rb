@@ -11,7 +11,14 @@ require 'eventmachine'
 require 'em-http-request'
 require 'pusher'
 require 'thin'
+require 'pry'
 
 RSpec.configure do |config|
   config.include EventMachineHelperMethods
+end
+
+module Kernel
+  def debugger
+    binding.pry
+  end
 end

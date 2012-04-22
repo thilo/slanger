@@ -19,26 +19,43 @@ module Slanger
     error(Signature::AuthenticationError) { |c| halt 401, "401 UNAUTHORIZED\n" }
 
     post '/apps/:app_id/channels/:channel_id/events' do
-      # authenticate request. exclude 'channel_id' and 'app_id' included by sinatra but not sent by Pusher.
-      # Raises Signature::AuthenticationError if request does not authenticate.
-      Signature::Request.new('POST', env['PATH_INFO'], params.except('channel_id', 'app_id')).
-        authenticate { |key| Signature::Token.new key, Slanger::Config.secret }
+      authenticate_request params
 
       f = Fiber.current
-      # Publish the event in Redis and translate the result into an HTTP
-      # status to return to the client.
-      Slanger::Redis.publish(params[:channel_id], payload).tap do |r|
+
+      publish(params[:channel_id]) do |r|
         r.callback { f.resume [202, {}, "202 ACCEPTED\n"] }
         r.errback  { f.resume [500, {}, "500 INTERNAL SERVER ERROR\n"] }
       end
+
       Fiber.yield
+    end
+
+    def publish channel_id
+      Slanger.publish(channel_id, payload).tap do |r|
+        yield r
+      end
+    end
+
+    # Raises Signature::AuthenticationError if request does not authenticate
+    def authenticate_request params
+      Signature::Request.new('POST', env['PATH_INFO'], only_pusher(params) ).
+        authenticate { |key| Signature::Token.new key, Slanger::Config.secret }
+    end
+
+    # exclude params included by sinatra but not sent by Pusher
+    def only_pusher params
+      params.except('channel_id', 'app_id')
     end
 
     def payload
       payload = {
-        event: params['name'], data: request.body.read.tap { |s| s.force_encoding('utf-8') }, channel: params[:channel_id], socket_id: params[:socket_id]
+        event:     params['name'],
+        data:      request.body.read.tap { |s| s.force_encoding('utf-8') },
+        channel:   params[:channel_id],
+        socket_id: params[:socket_id]
       }
-      Hash[payload.reject { |k,v| v.nil? }].to_json
+      Hash[payload.reject { |_,v| v.nil? }].to_json
     end
   end
 end

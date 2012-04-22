@@ -8,11 +8,8 @@ module Slanger
     extend Forwardable
 
     def self.extended base
-      # Dispatch messages received from Redis to their destination channel.
       base.on(:message) do |channel_id, message|
-        message = JSON.parse message
-        c = Channel.from message['channel']
-        c.dispatch message, channel_id
+        Channel.dispatch channel_id, message
       end
     end
 

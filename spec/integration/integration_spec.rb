@@ -32,18 +32,18 @@ describe 'Integration' do
             client1.send({ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }.to_json)
           end
 
-          client2_messages = em_stream do |client2, client2_messages|
+          client2_messages = messages_for(
+            ->(ws,m) { m.length < 3 },
+            ->(ws,m) {
+              socket_id = client1_messages.first['data']['socket_id']
+              Pusher['MY_CHANNEL'].trigger_async 'an_event', { some: 'data' }, socket_id
+            }
+          ) do |client2, client2_messages|
             client2.callback do
               client2.send({ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }.to_json)
             end if client2_messages.one?
-
-            if client2_messages.length < 3
-              socket_id = client1_messages.first['data']['socket_id']
-              Pusher['MY_CHANNEL'].trigger_async 'an_event', { some: 'data' }, socket_id
-            else
-              EM.stop
-            end
           end
+
         end
       end
 
