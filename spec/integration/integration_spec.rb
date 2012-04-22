@@ -1,66 +1,22 @@
 #encoding: utf-8
-require 'bundler/setup'
 
-require 'active_support/json'
-require 'active_support/core_ext/hash'
-require 'eventmachine'
-require 'em-http-request'
-require 'pusher'
-require 'thin'
 require './spec/spec_helper'
+require './spec/integration/shared_context'
 
 describe 'Integration' do
-  let(:errback) { Proc.new { fail 'cannot connect to slanger. your box might be too slow. try increasing sleep value in the before block' } }
-
-  before(:each) do
-    # Fork service. Our integration tests MUST block the main thread because we want to wait for i/o to finish.
-    @server_pid = EM.fork_reactor do
-      require File.expand_path(File.dirname(__FILE__) + '/../../slanger.rb')
-      Thin::Logging.silent = true
-
-      Slanger::Config.load host:           '0.0.0.0',
-                           api_port:       '4567',
-                           websocket_port: '8080',
-                           app_key:        '765ec374ae0a69f4ce44',
-                           secret:         'your-pusher-secret'
-
-      Slanger::Service.run
-    end
-    # Give Slanger a chance to start
-    sleep 0.6
-  end
-
-  after(:each) do
-    # Ensure Slanger is properly stopped. No orphaned processes allowed!
-    Process.kill 'SIGKILL', @server_pid
-    Process.wait @server_pid
-  end
-
-  before :all do
-    Pusher.tap do |p|
-      p.host   = '0.0.0.0'
-      p.port   = 4567
-      p.app_id = 'your-pusher-app-id'
-      p.secret = 'your-pusher-secret'
-      p.key    = '765ec374ae0a69f4ce44'
-    end
-  end
-
+  include_context "shared stuff"
+  before(:each) { fork_slanger }
 
   describe 'regular channels:' do
     it 'pushes messages to interested websocket connections' do
-      messages = em_stream do |websocket, messages|
-        websocket.callback do
-          websocket.send({ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }.to_json)
-        end if messages.one?
-
-        if messages.length < 3
-          Pusher['MY_CHANNEL'].trigger_async 'an_event', { some: "Mit Raben Und Wölfen" }
-        else
-          EM.stop
-        end
-
-     end
+      messages = messages_for(
+        ->(ws, m) { m.length < 3},
+        ->(ws, m) { Pusher['MY_CHANNEL'].trigger_async 'an_event', { some: "Mit Raben Und Wölfen" } }
+      ) do |ws, m|
+        ws.callback do
+          ws.send({ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }.to_json)
+        end if m.one?
+      end
 
       messages.should have_attributes connection_established: true, id_present: true,
         last_event: 'an_event', last_data: { some: "Mit Raben Und Wölfen" }.to_json
@@ -94,17 +50,7 @@ describe 'Integration' do
       client1_messages.should have_attributes count: 2
 
       client2_messages.should have_attributes last_event: 'an_event',
-                                              last_data: { some: 'data' }.to_json
-    end
-  end
-
-  def messages_for condition, if_true
-    em_stream do |websocket, messages|
-      if condition.call(websocket,messages)
-        if_true.call(websocket, messages)
-      else
-        EM.stop
-      end
+        last_data: { some: 'data' }.to_json
     end
   end
 
@@ -115,32 +61,27 @@ describe 'Integration' do
           ->(ws, m) { m.length < 2},
           ->(ws, m) { private_channel ws, m.first})
 
-        messages.should have_attributes connection_established: true,
-                                        count: 2,
-                                        id_present: true,
-                                        last_event: 'pusher_internal:subscription_succeeded'
+          messages.should have_attributes connection_established: true,
+            count: 2,
+            id_present: true,
+            last_event: 'pusher_internal:subscription_succeeded'
       end
     end
 
     context 'with bogus authentication credentials:' do
       it 'sends back an error message' do
-        messages  = em_stream do |websocket, messages|
-          if messages.length < 2
-            websocket.send({ event: 'pusher:subscribe',
-                             data: { channel: 'private-channel',
-                                     auth: 'bogus' } }.to_json)
-          else
-            EM.stop
-          end
-        end
+        messages  = messages_for(
+          ->(ws, m){ m.length < 2 },
+          ->(ws, m){ ws.send({ event: 'pusher:subscribe',
+                              data: { channel: 'private-channel',
+                                      auth: 'bogus' } }.to_json)}
+        )
 
         messages.should have_attributes connection_established: true, count: 2, id_present: true, last_event:
           'pusher:error'
-        messages.last['data']['message'].=~(/^Invalid signature: Expected HMAC SHA256 hex digest of/).should be_true
+        messages.last['data']['message'].should =~(/^Invalid signature: Expected HMAC SHA256 hex digest of/)
       end
     end
-
-
 
     describe 'client events' do
       it "sends event to other channel subscribers" do
@@ -181,17 +122,15 @@ describe 'Integration' do
     context 'subscribing without channel data' do
       context 'and bogus authentication credentials' do
         it 'sends back an error message' do
-          messages  = em_stream do |websocket, messages|
-            if messages.length < 2
-              websocket.send({ event: 'pusher:subscribe', data: { channel: 'presence-channel', auth: 'bogus' } }.to_json)
-            else
-              EM.stop
-            end
-          end
+          messages = messages_for(
+            ->(ws, m) { m.length < 2},
+            ->(ws, m) { ws.send({ event: 'pusher:subscribe', data: { channel: 'presence-channel', auth: 'bogus' } }.to_json) })
 
-          messages.should have_attributes connection_established: true, id_present: true,
+          messages.should have_attributes(
+            connection_established: true,
+            id_present: true,
             count: 2,
-            last_event: 'pusher:error'
+            last_event: 'pusher:error')
 
           messages.last['data']['message'].=~(/^Invalid signature: Expected HMAC SHA256 hex digest of/).should be_true
         end
@@ -201,17 +140,13 @@ describe 'Integration' do
     context 'subscribing with channel data' do
       context 'and bogus authentication credentials' do
         it 'sends back an error message' do
-          messages  = em_stream do |websocket, messages|
-            if messages.length < 2
-               send_subscribe( user: websocket,
-                               user_id: '0f177369a3b71275d25ab1b44db9f95f',
-                               name: 'SG',
-                               message: {data: {socket_id: 'bogus'}}.with_indifferent_access)
+          messages = messages_for(
+            ->(ws, m) { m.length < 2},
+            ->(ws, m) { send_subscribe( user: ws,
+                             user_id: user_id,
+                             name: 'SG',
+                             message: {data: {socket_id: 'bogus'}}.with_indifferent_access) })
 
-           else
-              EM.stop
-            end
-          end
 
           messages.should have_attributes first_event: 'pusher:connection_established', count: 2,
             id_present: true
@@ -224,17 +159,12 @@ describe 'Integration' do
 
       context 'with genuine authentication credentials'  do
         it 'sends back a success message' do
-          messages  = em_stream do |websocket, messages|
-            if messages.length < 2
-              send_subscribe( user: websocket,
-                              user_id: '0f177369a3b71275d25ab1b44db9f95f',
-                              name: 'SG',
-                              message: messages.first)
-           else
-              EM.stop
-            end
-
-          end
+          messages = messages_for(
+            ->(ws, m) { m.length < 2},
+            ->(ws, m) { send_subscribe( user: ws,
+                                        user_id: user_id,
+                                        name: 'SG',
+                                        message: m.first)})
 
           messages.should have_attributes connection_established: true, count: 2
 
@@ -242,9 +172,9 @@ describe 'Integration' do
                                    "event"=>"pusher_internal:subscription_succeeded",
                                    "data"=>{"presence"=>
                                             {"count"=>1,
-                                             "ids"=>["0f177369a3b71275d25ab1b44db9f95f"],
+                                             "ids"=>[user_id],
                                              "hash"=>
-                                            {"0f177369a3b71275d25ab1b44db9f95f"=>{"name"=>"SG"}}}}}
+                                            {user_id =>{"name"=>"SG"}}}}}
         end
 
 
@@ -256,7 +186,7 @@ describe 'Integration' do
               case messages.length
               when 1
                 send_subscribe(user: user1,
-                               user_id: '0f177369a3b71275d25ab1b44db9f95f',
+                               user_id: user_id,
                                name: 'SG',
                                message: messages.first
                               )
@@ -265,9 +195,9 @@ describe 'Integration' do
                 new_websocket.tap do |u|
                   u.stream do |message|
                     send_subscribe({user: u,
-                      user_id: '37960509766262569d504f02a0ee986d',
-                      name: 'CHROME',
-                      message: JSON.parse(message)})
+                                    user_id: second_user_id,
+                                    name: 'CHROME',
+                                    message: JSON.parse(message)})
                   end
                 end
               else
@@ -279,10 +209,10 @@ describe 'Integration' do
             messages.should have_attributes connection_established: true, count: 3
             # Channel id should be in the payload
             messages[1].  should == {"channel"=>"presence-channel", "event"=>"pusher_internal:subscription_succeeded",
-                                     "data"=>{"presence"=>{"count"=>1, "ids"=>["0f177369a3b71275d25ab1b44db9f95f"], "hash"=>{"0f177369a3b71275d25ab1b44db9f95f"=>{"name"=>"SG"}}}}}
+                                     "data"=>{"presence"=>{"count"=>1, "ids"=>[user_id], "hash"=>{user_id=>{"name"=>"SG"}}}}}
 
             messages.last.should == {"channel"=>"presence-channel", "event"=>"pusher_internal:member_added",
-                                     "data"=>{"user_id"=>"37960509766262569d504f02a0ee986d", "user_info"=>{"name"=>"CHROME"}}}
+                                     "data"=>{"user_id"=>second_user_id, "user_info"=>{"name"=>"CHROME"}}}
           end
 
           it 'does not send multiple member added and member removed messages if one subscriber opens multiple connections, i.e. multiple browser tabs.' do
@@ -290,7 +220,7 @@ describe 'Integration' do
               case messages.length
               when 1
                 send_subscribe(user: user1,
-                               user_id: '0f177369a3b71275d25ab1b44db9f95f',
+                               user_id: user_id,
                                name: 'SG',
                                message: messages.first)
 
@@ -303,9 +233,9 @@ describe 'Integration' do
                       u.stream { EM.next_tick { u.close_connection } }
 
                       send_subscribe({ user: u,
-                         user_id: '37960509766262569d504f02a0ee986d',
-                         name: 'CHROME',
-                         message: JSON.parse(message)})
+                                       user_id: second_user_id,
+                                       name: 'CHROME',
+                                       message: JSON.parse(message)})
                     end
                   end
                 end
@@ -316,8 +246,8 @@ describe 'Integration' do
             end
 
             # There should only be one set of presence messages sent to the refernce user for the second user.
-            messages.one? { |message| message['event'] == 'pusher_internal:member_added'   && message['data']['user_id'] == '37960509766262569d504f02a0ee986d' }.should be_true
-            messages.one? { |message| message['event'] == 'pusher_internal:member_removed' && message['data']['user_id'] == '37960509766262569d504f02a0ee986d' }.should be_true
+            messages.one? { |message| message['event'] == 'pusher_internal:member_added'   && message['data']['user_id'] == second_user_id }.should be_true
+            messages.one? { |message| message['event'] == 'pusher_internal:member_removed' && message['data']['user_id'] == second_user_id }.should be_true
 
           end
         end
@@ -328,13 +258,13 @@ describe 'Integration' do
   context "given invalid JSON as input" do
 
     it 'should not crash' do
-      messages  = em_stream do |websocket, messages|
-        websocket.callback do
-          websocket.send("{ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }23123")
-          EM.next_tick { EM.stop }
-        end if messages.one?
-
-      end
+      messages = messages_for ->(ws, m) { m.one? },
+        ->(websocket, messages){
+          websocket.callback do
+            websocket.send("{ event: 'pusher:subscribe', data: { channel: 'MY_CHANNEL'} }23123")
+            EM.next_tick { EM.stop }
+          end
+      }
 
       EM.run { new_websocket.tap { |u| u.stream { EM.next_tick { EM.stop } } }}
     end

@@ -1,63 +1,4 @@
 module EventMachineHelperMethods
-  def new_websocket
-    uri = "ws://0.0.0.0:8080/app/#{Pusher.key}?client=js&version=1.8.5"
-
-    EM::HttpRequest.new(uri).get(:timeout => 0).tap do |ws|
-      ws.errback &errback
-    end
-  end
-
-  def em_stream
-    messages = []
-
-    em_thread do
-      websocket = new_websocket
-
-      stream(websocket, messages) do |message|
-        yield websocket, messages
-      end
-    end
-
-    return messages
-  end
-
-  def em_thread
-    Thread.new do
-      EM.run do
-        yield
-      end
-    end.join
-  end
-
-  def stream websocket, messages
-    websocket.stream do |message|
-      messages << JSON.parse(message)
-
-      yield message
-    end
-  end
-
-  def auth_from options
-    id = options[:message]['data']['socket_id']
-    name = options[:name]
-    user_id = options[:user_id]
-    Pusher['presence-channel'].authenticate(id, {user_id: user_id, user_info: {name: name}})
-  end
-
-  def send_subscribe options
-    auth = auth_from options
-    options[:user].send({event: 'pusher:subscribe',
-                  data: {channel: 'presence-channel'}.merge(auth)}.to_json)
-  end
-
-  def private_channel websocket, message
-    auth = Pusher['private-channel'].authenticate(message['data']['socket_id'])[:auth]
-    websocket.send({ event: 'pusher:subscribe',
-                     data: { channel: 'private-channel',
-               auth: auth } }.to_json)
-
-  end
-
   class HaveAttributes
     attr_reader :messages, :attributes
     def initialize attributes
@@ -121,6 +62,3 @@ module EventMachineHelperMethods
     HaveAttributes.new attributes
   end
 end
-
-
-
