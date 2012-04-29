@@ -35,6 +35,7 @@ module Slanger
     rescue JSON::ParserError
       error({ code: 5001, message: "Invalid JSON" })
     rescue Exception => e
+
       if const_defined? RSpec
         puts e.message
         puts e.backtrace
