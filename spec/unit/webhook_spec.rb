@@ -4,12 +4,11 @@ require 'lib/slanger/webhook'
 describe 'Slanger::Webhook' do
 
   around do |example|
-    Slanger::Config = stub webhook_url: 'https://example.com/pusher',
-                          app_key: 'PUSHER_APP_KEY', secret: 'secret'
+    Slanger::Config.load webhook_url: 'https://example.com/pusher',
+      app_key: 'PUSHER_APP_KEY', secret: 'secret'
     WebMock.enable!
     Timecop.freeze(Time.now) { example.run }
     WebMock.disable!
-    Slanger.instance_eval { remove_const :Config }
   end
 
   describe '.post' do
