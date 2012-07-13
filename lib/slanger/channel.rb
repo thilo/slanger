@@ -14,7 +14,7 @@ module Slanger
     include Glamazon::Base
     extend  Forwardable
 
-    def_delegators :channel, :unsubscribe, :push
+    def_delegators :channel, :push
 
     class << self
       def from channel_id
