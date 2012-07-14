@@ -46,7 +46,7 @@ OptionParser.new do |opts|
   end
 
   opts.on '-b', '--webhook_url URL', "Callback URL for webhooks" do |p|
-    options[:webhook_url] ||= {}
+    options[:webhook_url] = p
   end
 
   opts.on '-c', '--cert_chain_file FILE', "Certificate chain file for SSL transport" do |p|
