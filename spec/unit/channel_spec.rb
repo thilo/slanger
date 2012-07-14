@@ -13,21 +13,50 @@ describe 'Slanger::Webhook' do
   end
 
   describe '#unsubscribe' do
-    it 'increments channel subscribers on Redis' do
+    it 'decrements channel subscribers on Redis' do
       Slanger::Redis.expects(:hincrby).
         with('channel_subscriber_count', channel.channel_id, -1).
-        returns 1
+        once.returns mock { expects(:callback).once.yields(2) }
+
       channel.unsubscribe 1
+    end
+
+    it 'activates a webhook when the last subscriber of a channel unsubscribes' do
+      Slanger::Webhook.expects(:post).
+        with(name: 'channel_vacated', channel: channel.channel_id).
+        once
+
+      Slanger::Redis.expects(:hincrby).
+        with('channel_subscriber_count', channel.channel_id, -1).
+        times(3).returns mock {
+          expects(:callback).times(3).yields(2).then.yields(1).then.yields(0)
+        }
+
+      3.times { |i| channel.unsubscribe i + 1 }
     end
   end
 
   describe '#subscribe' do
-    it 'decrements channel subscribers on Redis' do
+    it 'increments channel subscribers on Redis' do
       Slanger::Redis.expects(:hincrby).
-        with('channel_subscriber_count', channel.channel_id, 1)
+        with('channel_subscriber_count', channel.channel_id, 1).
+        once.returns mock { expects(:callback).once.yields(2) }
       channel.subscribe { |m| nil }
     end
-  end
 
+    it 'activates a webhook when the first subscriber of a channel joins' do
+      Slanger::Webhook.expects(:post).
+        with(name: 'channel_occupied', channel: channel.channel_id).
+        once
+
+      Slanger::Redis.expects(:hincrby).
+        with('channel_subscriber_count', channel.channel_id, 1).
+        times(3).returns mock {
+          expects(:callback).times(3).yields(1).then.yields(2).then.yields(3)
+        }
+
+      3.times { channel.subscribe { |m| nil } }
+    end
+  end
 end
 

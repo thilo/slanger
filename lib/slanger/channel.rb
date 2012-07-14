@@ -41,12 +41,20 @@ module Slanger
     end
 
     def subscribe *a, &blk
-      Slanger::Redis.hincrby('channel_subscriber_count', channel_id, 1)
+      Slanger::Redis.hincrby('channel_subscriber_count', channel_id, 1).
+        callback do |value|
+          Slanger::Webhook.post name: 'channel_occupied', channel: channel_id if value == 1
+        end
+
       channel.subscribe *a, &blk
     end
 
     def unsubscribe *a, &blk
-      Slanger::Redis.hincrby('channel_subscriber_count', channel_id, -1)
+      Slanger::Redis.hincrby('channel_subscriber_count', channel_id, -1).
+        callback do |value|
+          Slanger::Webhook.post name: 'channel_vacated', channel: channel_id if value == 0
+        end
+
       channel.unsubscribe *a, &blk
     end
 
