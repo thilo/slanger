@@ -1,13 +1,12 @@
-require 'thin'
+require 'puma'
 require 'rack'
 
 module Slanger
   module Service
     def run
       Slanger::Config[:require].each { |f| require f }
-      Thin::Logging.silent = true
-      Rack::Handler::Thin.run Slanger::ApiServer, Host: Slanger::Config.api_host, Port: Slanger::Config.api_port
       Slanger::WebSocketServer.run
+      Rack::Handler.get(:puma).run Slanger::ApiServer, Host: Slanger::Config.api_host, Port: Slanger::Config.api_port, quiet: false, enviroment: 'environment'
     end
 
     def stop

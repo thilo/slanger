@@ -2,7 +2,7 @@ require 'sinatra'
 require 'haml'
 require 'pusher'
 require 'digest/md5'
-require 'thin'
+require 'puma'
 require 'json'
 
 set :views, File.dirname(__FILE__) + '/templates'

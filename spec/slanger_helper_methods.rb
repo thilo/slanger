@@ -22,8 +22,8 @@ module SlangerHelperMethods
 
   def stop_slanger
     # Ensure Slanger is properly stopped. No orphaned processes allowed!
-     Process.kill 'SIGKILL', @server_pid
-     Process.wait @server_pid
+     @server_thread.kill
+     @server_thread = nil
   end
 
   def wait_for_slanger opts = {}
@@ -31,7 +31,8 @@ module SlangerHelperMethods
     begin
       TCPSocket.new('0.0.0.0', opts[:port]).close
     rescue
-      sleep 0.005
+      p 'w'
+      sleep 0.1
       retry
     end
   end
